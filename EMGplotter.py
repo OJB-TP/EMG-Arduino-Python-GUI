@@ -23,12 +23,13 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 import datetime; 
+import numpy as np;
 
 
 started = False
-
-
-    
+ct = 0
+generalDebug = True
+listDebug = False    
 class WorkerSignals(QObject):
     finished = Signal()
     error = Signal(tuple)
@@ -47,18 +48,61 @@ class Worker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        arduino = serial.Serial('COM3', 115200)
         try:
-            arduino = serial.Serial('COM33', 9600, timeout=.1)
+            arduino = serial.Serial('COM3', 115200)
         except:
             print ("can't open COM because connected")
         cnt = 0
+        ct = time.time()
+        samples = 10
+        packet_size = 3
+        incoming_buffer = samples * packet_size
         global started
+        global form
+        global app
+        L = [1,2,3,4,5,1,2,3,4]
+        thisPlot = form.graphicsView.plot(L)
+        L2 = [4,3,2,1,5,4,3,2,1]
+        avgPlot = form.graphicsView.plot(L2)
+        FreqSamp = 1000 
+        seconds = 3
+        points = FreqSamp * seconds
+        thisPlot.x = list(range(1, points+1))
+        thisPlot.y = [0] * points
+        begin = 1
         while started:
-            ct = datetime.datetime.now()
+            
+            delta = time.time() - ct
+            ct = time.time()
+            #ct = datetime.datetime.now()
             cnt = cnt + 1
-            print (arduino.readline())
+            inc_bytes = bytes(arduino.read(incoming_buffer))            
+            print (inc_bytes)
+            tmp_int = ConvertBufferToData(inc_bytes)
+            #x = list(range(1, len (tmp_int)))
+            if tmp_int != None:
+                redTmp_int = [i for i in tmp_int if i]
+                ##WIP
+                print (redTmp_int)
+                stopEnd = begin + len(redTmp_int)
+                if stopEnd > points:
+                        begin = 1
+                        stopEnd = begin + len(redTmp_int)
+                print ("stopEnd: "+ str(stopEnd))
+                #print ("thisPlot.y: "+ str(thisPlot.y))
+                print ("redTmp_int: "+ str(redTmp_int))
+
+                thisPlot.y [begin:stopEnd] = redTmp_int
+                
+                thisPlot.setData(thisPlot.x, thisPlot.y, pen=pg.mkPen('b', width=5))
+                #this.Plot.setXRange(5, 4990)
+                #WIP
+                begin = begin + len(redTmp_int)
+            if delta != 0:
+                print ("Frequenza di ricezione del package: " + str((1/delta)))
             print(cnt)
-            print (ct)
+            print (datetime.datetime.now())
 
 
 class EMGApp(QtWidgets.QMainWindow, EMGreader.Ui_MainWindow):
@@ -109,13 +153,20 @@ def printRecBtn():
 def main():
     global app
     app = QApplication(sys.argv)
+    global form
     form = EMGApp()
     form.startButton.clicked.connect (printStartBtn)
     form.stopButton.clicked.connect (printStopBtn)
     form.connectButton.clicked.connect (printConnectBtn)
     form.recButton.clicked.connect (printRecBtn)
+    
+    L = []
+    form.graphicsView.plot(L, pen=pg.mkPen('b', width=5))
     form.show()
+    
     app.exec_()
+
+
 
 def Start():
     global started
@@ -127,7 +178,50 @@ def Stop():
     global started
     if started:
         started = False
-        print (started)   
+        print (started)
 
+def ConvertBufferToData (tmp_bytes):
+    if generalDebug and listDebug: print (len(tmp_bytes))
+    ff_indexes = [i for i, x in enumerate(tmp_bytes) if x == 0xFF]
+    diff_ff_indexes = np.diff(ff_indexes)
+    wrong_diff = [i for i, x in enumerate(diff_ff_indexes) if x != 3]
+    if generalDebug and listDebug: print ("ff_ indexes: " + str(ff_indexes))
+    if generalDebug and listDebug: print ("diff_ff_indexes: " + str (diff_ff_indexes))
+    if (ff_indexes[0]+3==ff_indexes[1] and ff_indexes[1]+3==ff_indexes[2]):
+        int_index = 0
+        samples = 10
+        tmp_int = [None]*samples
+        diff_index = 0
+        for ff_index in ff_indexes:
+            if generalDebug and listDebug: print ("diff_index: " +str(diff_index))
+            if diff_index<len(diff_ff_indexes):
+                if diff_ff_indexes[diff_index] < 3: 
+                    diff_index = diff_index + 1
+                    continue
+                diff_index = diff_index + 1
+            if generalDebug and listDebug: print ("ff_index: " + str(ff_index))
+            if generalDebug and listDebug: print ("converting: " + str(tmp_bytes[(ff_index+1) : (ff_index+3)]))
+            tmp_int[int_index] = int.from_bytes(tmp_bytes[(ff_index+1):(ff_index+3)], byteorder ='big')
+            if generalDebug and listDebug: print("tmp_int[int_index]: " + str(tmp_int[int_index]))
+            int_index = int_index + 1
+        if generalDebug: print (str(tmp_int))
+        return tmp_int
+    else:
+        if generalDebug: print ("Bad packet")
+        return
+    
+def update_plot_data(plotParam, indexParam, yParam):
+    FreqSamp = 1000 
+    packet_size = 3
+    seconds = 5
+    points = FreqSamp * packet_size * seconds
+    plotParam.x = list(range(1, points))
+    yParam 
+    plotParam.y.append(yParam)  # Add a new value.
+    
+    plotParam.data_line.setData(plotParam.x, plotParam.y)  # Update the data.    
+
+    
+    
 if __name__ == '__main__':
     main()

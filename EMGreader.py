@@ -7,6 +7,7 @@
 # WARNING! All changes made in this file will be lost!
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+import pyqtgraph as pg
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -14,9 +15,11 @@ class Ui_MainWindow(object):
         MainWindow.resize(974, 408)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
-        self.graphicsView = QtWidgets.QGraphicsView(self.centralwidget)
+        self.graphicsView = pg.PlotWidget(self.centralwidget)
         self.graphicsView.setGeometry(QtCore.QRect(200, 51, 761, 261))
         self.graphicsView.setObjectName("graphicsView")
+        self.graphicsView.setBackground('w')
+        #self.x = list(range(100))  # 100 time points
         self.startButton = QtWidgets.QPushButton(self.centralwidget)
         self.startButton.setGeometry(QtCore.QRect(30, 50, 161, 41))
         font = QtGui.QFont()
@@ -52,6 +55,8 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        
+
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
