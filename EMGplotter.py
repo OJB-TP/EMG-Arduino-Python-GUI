@@ -24,12 +24,16 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 import datetime; 
 import numpy as np;
-
+import pathlib;
+from datetime import datetime as dt
 
 started = False
 ct = 0
 generalDebug = True
-listDebug = False    
+listDebug = False 
+receivingDebug = True  
+global recBool
+recBool = False 
 class WorkerSignals(QObject):
     finished = Signal()
     error = Signal(tuple)
@@ -54,8 +58,9 @@ class Worker(QRunnable):
         except:
             print ("can't open COM because connected")
         cnt = 0
+        total_time_elapsed = 0
         ct = time.time()
-        samples = 10
+        samples = 100
         packet_size = 3
         incoming_buffer = samples * packet_size
         global started
@@ -66,41 +71,64 @@ class Worker(QRunnable):
         L2 = [4,3,2,1,5,4,3,2,1]
         avgPlot = form.graphicsView.plot(L2)
         FreqSamp = 1000 
-        seconds = 3
+        seconds = 5
         points = FreqSamp * seconds
         thisPlot.x = list(range(1, points+1))
         thisPlot.y = [0] * points
         begin = 1
+        # opening file
+        file_date = dt.today().strftime("%b-%d-%Y")
+        print (str(file_date))
+        file_path=os.path.join(str(pathlib.Path().parent.resolve()), "EMG" + str(file_date) + str(time.time()) + ".txt")
+        #print (file_path)
+        #file_name = os.path.join(this_path, file_date + ".txt")
+        print ("Writing in this path: " + file_path)
+        f = open(file_path, "a")
+        global recBool
         while started:
-            
+            #time.sleep(samples/1000)
             delta = time.time() - ct
             ct = time.time()
             #ct = datetime.datetime.now()
             cnt = cnt + 1
             inc_bytes = bytes(arduino.read(incoming_buffer))            
-            print (inc_bytes)
-            tmp_int = ConvertBufferToData(inc_bytes)
+            #print (inc_bytes)
+            tmp_int = ConvertBufferToData(inc_bytes, samples)
             #x = list(range(1, len (tmp_int)))
             if tmp_int != None:
                 redTmp_int = [i for i in tmp_int if i]
                 ##WIP
                 print (redTmp_int)
+                if recBool:
+                    total_time_elapsed += delta
+                    for row in redTmp_int:
+                        if delta != 0:#np.savetxt(f, row)
+                            toWrite = str(row) + "," + str(total_time_elapsed) + ","  + str((1/delta))  + "," + str(len(redTmp_int)) + ","+ str(len(redTmp_int)/(delta)) + "," + "\n"
+                            f.write(toWrite)
+                else:
+                    f.close()
                 stopEnd = begin + len(redTmp_int)
                 if stopEnd > points:
-                        begin = 1
+                        begin = 0
                         stopEnd = begin + len(redTmp_int)
-                print ("stopEnd: "+ str(stopEnd))
+                #print ("stopEnd: "+ str(stopEnd))
                 #print ("thisPlot.y: "+ str(thisPlot.y))
-                print ("redTmp_int: "+ str(redTmp_int))
+                #print ("redTmp_int: "+ str(redTmp_int))
 
                 thisPlot.y [begin:stopEnd] = redTmp_int
-                
                 thisPlot.setData(thisPlot.x, thisPlot.y, pen=pg.mkPen('b', width=5))
+                #form.graphicsView.enableAutoScale()
+
                 #this.Plot.setXRange(5, 4990)
                 #WIP
                 begin = begin + len(redTmp_int)
             if delta != 0:
-                print ("Frequenza di ricezione del package: " + str((1/delta)))
+                
+                if generalDebug and receivingDebug:
+                    print ("Elapsed time in receiving: " + str(delta * 1000) + "ms")
+                    print ("Frequenza di ricezione del package: " + str((1/delta)) + "Hz")
+                    print ("Number of samples received: " + str(len(redTmp_int)))
+                    print ("Estimated sample frequency: " + str(len(redTmp_int)/(delta)))
             print(cnt)
             print (datetime.datetime.now())
 
@@ -149,6 +177,11 @@ def printConnectBtn():
     
 def printRecBtn():
     print ("REC pressed")
+    global recBool
+    if recBool:
+        recBool = False
+    else:
+        recBool = True
     
 def main():
     global app
@@ -162,6 +195,7 @@ def main():
     
     L = []
     form.graphicsView.plot(L, pen=pg.mkPen('b', width=5))
+    form.graphicsView.enableAutoScale()
     form.show()
     
     app.exec_()
@@ -180,7 +214,7 @@ def Stop():
         started = False
         print (started)
 
-def ConvertBufferToData (tmp_bytes):
+def ConvertBufferToData (tmp_bytes, samples):
     if generalDebug and listDebug: print (len(tmp_bytes))
     ff_indexes = [i for i, x in enumerate(tmp_bytes) if x == 0xFF]
     diff_ff_indexes = np.diff(ff_indexes)
@@ -189,7 +223,6 @@ def ConvertBufferToData (tmp_bytes):
     if generalDebug and listDebug: print ("diff_ff_indexes: " + str (diff_ff_indexes))
     if (ff_indexes[0]+3==ff_indexes[1] and ff_indexes[1]+3==ff_indexes[2]):
         int_index = 0
-        samples = 10
         tmp_int = [None]*samples
         diff_index = 0
         for ff_index in ff_indexes:
